@@ -1,5 +1,10 @@
 package manifest
 
+import (
+	"fmt"
+	"strings"
+)
+
 func (m *Manifest) Build(dir string) error {
 	builds := map[string]string{}
 	pulls := map[string]string{}
@@ -7,17 +12,20 @@ func (m *Manifest) Build(dir string) error {
 	for _, service := range m.Services {
 		switch {
 		case service.Build != "":
-			builds[service.Build] = service.Tag()
+			builds[fmt.Sprintf("%s|%s", service.Build, coalesce(service.Dockerfile, "Dockerfile"))] = service.Tag()
 		case service.Image != "":
 			pulls[service.Image] = service.Tag()
 		}
 	}
 
-	for dir, tag := range builds {
+	for build, tag := range builds {
+		parts := strings.SplitN(build, "|", 2)
+
 		args := []string{"build"}
 
+		args = append(args, "-f", parts[1])
 		args = append(args, "-t", tag)
-		args = append(args, dir)
+		args = append(args, parts[0])
 
 		runPrefix(systemPrefix(m), Docker(args...))
 	}

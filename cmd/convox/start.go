@@ -44,7 +44,7 @@ func init() {
 }
 
 func cmdStart(c *cli.Context) error {
-	go resizeHandler()
+	// go resizeHandler()
 
 	id, err := currentId()
 	stdcli.QOSEventSend("cli-start", id, stdcli.QOSEventProperties{Error: err})

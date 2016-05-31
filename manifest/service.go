@@ -1,10 +1,14 @@
 package manifest
 
 import (
+	"bufio"
+	"bytes"
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/url"
+	"path/filepath"
 	"strings"
 )
 
@@ -61,8 +65,45 @@ func (s *Service) Proxies(app string) []Proxy {
 	return proxies
 }
 
+func (s *Service) SyncPaths() (map[string]string, error) {
+	sp := map[string]string{}
+
+	if s.Build == "" {
+		return sp, nil
+	}
+
+	data, err := ioutil.ReadFile(filepath.Join(s.Build, coalesce(s.Dockerfile, "Dockerfile")))
+
+	if err != nil {
+		return nil, err
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+
+	for scanner.Scan() {
+		parts := strings.Fields(scanner.Text())
+
+		if len(parts) < 1 {
+			continue
+		}
+
+		switch parts[0] {
+		case "ADD", "COPY":
+			if len(parts) >= 3 {
+				sp[parts[1]] = parts[2]
+			}
+		}
+	}
+
+	return sp, nil
+}
+
 func (s *Service) Tag() string {
-	return tagHash(coalesce(s.Build, s.Image))
+	if s.Build != "" {
+		return tagHash(fmt.Sprintf("%s:%s", s.Build, s.Dockerfile))
+	} else {
+		return tagHash(s.Image)
+	}
 }
 
 func containerEnv(container string) map[string]string {

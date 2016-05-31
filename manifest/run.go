@@ -50,6 +50,17 @@ func (r *Run) Start() error {
 			return err
 		}
 
+		sp, err := p.service.SyncPaths()
+
+		if err != nil {
+			return err
+		}
+
+		for local, remote := range sp {
+			fmt.Printf("local = %+v\n", local)
+			fmt.Printf("remote = %+v\n", remote)
+		}
+
 		r.processes = append(r.processes, p)
 
 		waitForContainer(p.Name)
