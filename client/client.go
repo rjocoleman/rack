@@ -391,16 +391,17 @@ func (c *Client) proxyWebsocket(config *websocket.Config, proxy string) (*websoc
 	}
 
 	conn, err := net.DialTimeout("tcp", u.Host, 3*time.Second)
-
 	if err != nil {
 		return nil, err
 	}
 
 	if _, err = conn.Write([]byte(fmt.Sprintf("CONNECT %s:443 HTTP/1.1\r\n", c.Host))); err != nil {
+		conn.Close()
 		return nil, err
 	}
 
 	if _, err = conn.Write([]byte(fmt.Sprintf("Host: %s:443\r\n", c.Host))); err != nil {
+		conn.Close()
 		return nil, err
 	}
 
@@ -408,22 +409,25 @@ func (c *Client) proxyWebsocket(config *websocket.Config, proxy string) (*websoc
 		enc := base64.StdEncoding.EncodeToString([]byte(auth.String()))
 
 		if _, err = conn.Write([]byte(fmt.Sprintf("Proxy-Authorization: Basic %s\r\n", enc))); err != nil {
+			conn.Close()
 			return nil, err
 		}
 	}
 
 	if _, err = conn.Write([]byte("Proxy-Connection: Keep-Alive\r\n\r\n")); err != nil {
+		conn.Close()
 		return nil, err
 	}
 
 	data, err := bufio.NewReader(conn).ReadString('\n')
-
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 
 	// need an http 200 response
 	if !strings.Contains(string(data), " 200 ") {
+		conn.Close()
 		return nil, fmt.Errorf("proxy error: %s", strings.TrimSpace(string(data)))
 	}
 
