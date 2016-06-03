@@ -171,21 +171,12 @@
 {{ end }}
 
 {{ define "process-outputs" }}
-  "Kinesis": {
-    "Value": { "Ref": "Kinesis" }
-  },
   "LogGroup": {
     "Value": { "Ref": "LogGroup" }
   },
 {{ end }}
 
 {{ define "process-resources" }}
-  "Kinesis": {
-    "Type": "AWS::Kinesis::Stream",
-    "Properties": {
-      "ShardCount": 1
-    }
-  },
   "LogGroup": {
     "Type": "AWS::Logs::LogGroup"
   },
@@ -628,7 +619,6 @@
       {{ range $key, $value := .LinkVars }}
         "{{ $key }}": {{ $value }},
       {{ end }}
-      "KINESIS": { "Ref": "Kinesis" },
       "LOG_GROUP": { "Ref": "LogGroup" },
       "PROCESS": "{{ .Name }}"
     },
