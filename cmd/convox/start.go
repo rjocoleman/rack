@@ -7,12 +7,10 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"gopkg.in/urfave/cli.v1"
-
-	"golang.org/x/crypto/ssh/terminal"
-
 	"github.com/convox/rack/cmd/convox/stdcli"
 	"github.com/convox/rack/manifest"
+	"golang.org/x/crypto/ssh/terminal"
+	"gopkg.in/urfave/cli.v1"
 )
 
 func init() {
@@ -44,7 +42,7 @@ func init() {
 }
 
 func cmdStart(c *cli.Context) error {
-	// go resizeHandler()
+	// go handleResize()
 
 	id, err := currentId()
 	stdcli.QOSEventSend("cli-start", id, stdcli.QOSEventProperties{Error: err})
@@ -73,12 +71,28 @@ func cmdStart(c *cli.Context) error {
 		return stdcli.ExitError(err)
 	}
 
-	run := m.Run(dir, app)
+	r := m.Run(dir, app)
 
-	return run.Start()
+	if err := r.Start(); err != nil {
+		fmt.Printf("err: %+v\n", err)
+		return err
+	}
+
+	go handleInterrupt(r)
+
+	return r.Wait()
 }
 
-func resizeHandler() {
+func handleInterrupt(run manifest.Run) {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt, os.Kill)
+	<-ch
+	fmt.Println("")
+	run.Stop()
+	os.Exit(0)
+}
+
+func handleResize() {
 	manifest.TerminalWidth, _, _ = terminal.GetSize(int(os.Stdin.Fd()))
 
 	sigch := make(chan os.Signal)

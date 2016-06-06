@@ -3,9 +3,7 @@ package manifest
 import (
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
-	"os/signal"
 	"strings"
 	"time"
 )
@@ -14,9 +12,11 @@ type Run struct {
 	App string
 	Dir string
 
+	done      chan error
 	manifest  Manifest
 	processes []Process
 	proxies   []Proxy
+	syncs     []Sync
 }
 
 func NewRun(dir, app string, m Manifest) Run {
@@ -28,12 +28,11 @@ func NewRun(dir, app string, m Manifest) Run {
 }
 
 func (r *Run) Start() error {
-	defer r.Stop()
+	if r.done != nil {
+		return fmt.Errorf("already started")
+	}
 
-	done := make(chan error)
-	kill := make(chan os.Signal, 1)
-
-	signal.Notify(kill, os.Interrupt, os.Kill)
+	r.done = make(chan error)
 
 	if err := r.manifest.Build(r.Dir); err != nil {
 		return err
@@ -46,7 +45,7 @@ func (r *Run) Start() error {
 
 		Docker("rm", "-f", p.Name).Run()
 
-		if err := runPrefixAsync(manifestPrefix(r.manifest, p.service.Name), Docker(append([]string{"run"}, p.Args...)...), done); err != nil {
+		if err := runPrefixAsync(manifestPrefix(r.manifest, p.service.Name), Docker(append([]string{"run"}, p.Args...)...), r.done); err != nil {
 			return err
 		}
 
@@ -56,9 +55,24 @@ func (r *Run) Start() error {
 			return err
 		}
 
+		syncs := []Sync{}
+
 		for local, remote := range sp {
-			fmt.Printf("local = %+v\n", local)
-			fmt.Printf("remote = %+v\n", remote)
+			s, err := p.Sync(local, remote)
+
+			if err != nil {
+				return err
+			}
+
+			syncs = append(syncs, *s)
+		}
+
+		// remove redundant syncs
+		syncs = pruneSyncs(syncs)
+
+		for _, s := range syncs {
+			s.Start()
+			r.syncs = append(r.syncs, s)
 		}
 
 		r.processes = append(r.processes, p)
@@ -71,29 +85,48 @@ func (r *Run) Start() error {
 		}
 	}
 
-	waitFor(done, kill)
-
-	r.Stop()
-
 	return nil
 }
 
-func waitFor(done chan error, kill chan os.Signal) {
-	for {
-		select {
-		case <-kill:
-			fmt.Println()
-			return
-		case <-done:
-			return
-		}
-	}
+func (r *Run) Wait() error {
+	defer r.Stop()
+	<-r.done
+	return nil
 }
 
 func (r *Run) Stop() {
 	for _, p := range r.processes {
 		Docker("kill", p.Name).Run()
 	}
+
+	for _, p := range r.proxies {
+		Docker("kill", p.Name).Run()
+	}
+}
+
+func pruneSyncs(syncs []Sync) []Sync {
+	pruned := []Sync{}
+
+	for i := 0; i < len(syncs); i++ {
+		root := true
+
+		for j := 0; j < len(syncs); j++ {
+			if i == j {
+				continue
+			}
+
+			if syncs[j].Contains(syncs[i]) {
+				root = false
+				break
+			}
+		}
+
+		if root {
+			pruned = append(pruned, syncs[i])
+		}
+	}
+
+	return pruned
 }
 
 func runPrefix(prefix string, cmd *exec.Cmd) error {

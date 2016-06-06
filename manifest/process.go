@@ -48,3 +48,7 @@ func NewProcess(app string, s Service) Process {
 		service: s,
 	}
 }
+
+func (p *Process) Sync(local, remote string) (*Sync, error) {
+	return NewSync(p.Name, local, remote)
+}
