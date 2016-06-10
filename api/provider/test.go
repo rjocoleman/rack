@@ -119,8 +119,8 @@ func (p *TestProviderRunner) IndexUpload(hash string, data []byte) error {
 }
 
 func (p *TestProviderRunner) InstanceList() (structs.Instances, error) {
-	p.Called()
-	return p.Instances, nil
+	args := p.Called()
+	return args.Get(0).(structs.Instances), args.Error(1)
 }
 
 func (p *TestProviderRunner) LogStream(app string, w io.Writer, opts structs.LogStreamOptions) error {
