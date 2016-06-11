@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func (m *Manifest) Build(dir string) error {
+func (m *Manifest) Build(dir string, s Stream) error {
 	builds := map[string]string{}
 	pulls := map[string]string{}
 
@@ -27,7 +27,8 @@ func (m *Manifest) Build(dir string) error {
 		args = append(args, "-t", tag)
 		args = append(args, parts[0])
 
-		runPrefix(systemPrefix(m), Docker(args...))
+		run(s, Docker(args...))
+		// runPrefix(systemPrefix(m), Docker(args...))
 	}
 
 	for image, tag := range pulls {
@@ -35,8 +36,10 @@ func (m *Manifest) Build(dir string) error {
 
 		args = append(args, image)
 
-		runPrefix(systemPrefix(m), Docker(args...))
-		runPrefix(systemPrefix(m), Docker("tag", image, tag))
+		run(s, Docker(args...))
+		run(s, Docker("tag", image, tag))
+		// runPrefix(systemPrefix(m), Docker(args...))
+		// runPrefix(systemPrefix(m), Docker("tag", image, tag))
 	}
 
 	return nil

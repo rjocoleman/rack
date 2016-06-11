@@ -12,6 +12,19 @@ type Change struct {
 	Path      string
 }
 
+func Partition(changes []Change) (adds []Change, removes []Change) {
+	for _, c := range changes {
+		switch c.Operation {
+		case "add":
+			adds = append(adds, c)
+		case "remove":
+			removes = append(removes, c)
+		}
+	}
+
+	return
+}
+
 func Watch(dir string, ch chan Change) error {
 	files := map[string]map[string]time.Time{}
 

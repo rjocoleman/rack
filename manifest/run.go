@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os/exec"
@@ -14,6 +15,7 @@ type Run struct {
 
 	done      chan error
 	manifest  Manifest
+	output    Output
 	processes []Process
 	proxies   []Proxy
 	syncs     []Sync
@@ -24,6 +26,7 @@ func NewRun(dir, app string, m Manifest) Run {
 		App:      app,
 		Dir:      dir,
 		manifest: m,
+		output:   NewOutput(),
 	}
 }
 
@@ -32,11 +35,22 @@ func (r *Run) Start() error {
 		return fmt.Errorf("already started")
 	}
 
+	// preload system-level stream names
+	r.output.Stream("convox")
+	r.output.Stream("build")
+
+	// preload process stream names so padding is set correctly
+	for _, s := range r.manifest.runOrder() {
+		r.output.Stream(s.Name)
+	}
+
 	r.done = make(chan error)
 
-	if err := r.manifest.Build(r.Dir); err != nil {
+	if err := r.manifest.Build(r.Dir, r.output.Stream("build")); err != nil {
 		return err
 	}
+
+	system := r.output.Stream("convox")
 
 	for _, s := range r.manifest.runOrder() {
 		proxies := s.Proxies(r.App)
@@ -45,9 +59,7 @@ func (r *Run) Start() error {
 
 		Docker("rm", "-f", p.Name).Run()
 
-		if err := runPrefixAsync(manifestPrefix(r.manifest, p.service.Name), Docker(append([]string{"run"}, p.Args...)...), r.done); err != nil {
-			return err
-		}
+		runAsync(r.output.Stream(p.service.Name), Docker(append([]string{"run"}, p.Args...)...), r.done)
 
 		sp, err := p.service.SyncPaths()
 
@@ -71,7 +83,7 @@ func (r *Run) Start() error {
 		syncs = pruneSyncs(syncs)
 
 		for _, s := range syncs {
-			s.Start()
+			go s.Start(system)
 			r.syncs = append(r.syncs, s)
 		}
 
@@ -129,29 +141,38 @@ func pruneSyncs(syncs []Sync) []Sync {
 	return pruned
 }
 
-func runPrefix(prefix string, cmd *exec.Cmd) error {
+func run(s Stream, cmd *exec.Cmd) error {
 	done := make(chan error, 1)
-	runPrefixAsync(prefix, cmd, done)
+	runAsync(s, cmd, done)
 	return <-done
 }
 
-func runPrefixAsync(prefix string, cmd *exec.Cmd, done chan error) error {
-	printWrap(prefix, fmt.Sprintf("running: %s", strings.Join(cmd.Args, " ")))
+func runAsync(s Stream, cmd *exec.Cmd, done chan error) {
+	s <- fmt.Sprintf("running: %s", strings.Join(cmd.Args, " "))
 
 	r, w := io.Pipe()
 
-	go prefixReader(prefix, r)
+	go streamReader(s, r)
 
 	cmd.Stdout = w
 	cmd.Stderr = w
 
-	err := cmd.Start()
+	if err := cmd.Start(); err != nil {
+		done <- err
+		return
+	}
 
 	go func() {
 		done <- cmd.Wait()
 	}()
+}
 
-	return err
+func streamReader(s Stream, r io.Reader) {
+	scanner := bufio.NewScanner(r)
+
+	for scanner.Scan() {
+		s <- scanner.Text()
+	}
 }
 
 func waitForContainer(container string) {
