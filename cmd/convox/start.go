@@ -87,7 +87,7 @@ func handleInterrupt(run manifest.Run) {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, os.Interrupt, os.Kill)
 	<-ch
-	fmt.Println("stopping")
+	fmt.Println("")
 	run.Stop()
 	os.Exit(0)
 }
